@@ -5,7 +5,11 @@ import aiohttp
 from aiohttp import ClientTimeout
 from bs4 import BeautifulSoup
 import urllib.parse
+import numpy as np
+from scipy.spatial.distance import cosine
 import pandas as pd
+
+MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Асинхронная функция для поиска на DuckDuckGo
 async def duckduckgo_search(query):
@@ -56,11 +60,19 @@ async def text_search(result_links):
         results = await asyncio.gather(*tasks)
         return results
 
+def compare_embeddings(embedding, embeddings_list):
+    list_sim = []
+    for i, other_embedding in enumerate(embeddings_list):
+        # Вычисляем косинусное расстояние
+        similarity = 1 - cosine(embedding, other_embedding)
+        list_sim.append(similarity)
+    return list_sim
+
 # Главная функция для запуска асинхронных задач
 async def main():
     query = input('Введите запрос: ')
-    result_list = await duckduckgo_search(query)
-    parsed_results = await text_search(result_list)
+    result_list = duckduckgo_search(query)
+    parsed_results = text_search(result_list)
 
     # Фильтрация текстов длиной не менее 100 символов
     filtered_results = [result for result in parsed_results if len(result['text'].strip()) >= 100]
@@ -76,24 +88,28 @@ async def main():
 
     print(f"Количество записей: {len(filtered_results)}")
 
+    results_emb = []
+
+    # Эмбеддинги с текста по одному подзапросу
     for i in texts:
-        print(i)
-        print('---------------------')
+        results_emb.append(np.array(MODEL.encode(i)))
+
+    print(len(results_emb))
+    print('=============================================================================================')
+    print(results_emb)
+    main_emb = np.array(MODEL.encode(query))
+    print(main_emb)
+    print('=============================================================================================')
+    list_similarity = compare_embeddings(main_emb, results_emb)
+    print(list_similarity)
+    print('=============================================================================================')
+    print(urls[list_similarity.index(max(list_similarity))])
 
     # Возвращение списков
     return urls, texts
+    # Запуск программы
 
-# Создание эмбеддингов
-def create_embeddings(texts):
-    model = SentenceTransformer('all-MiniLM-L6-v2')  # Загружаем модель Sentence Transformers
-    embeddings = model.encode(texts, show_progress_bar=True)  # Создаем эмбеддинги
-    return embeddings
 
-# Запуск программы
 if __name__ == '__main__':
-    urls_list, texts_list = asyncio.run(main())  # Получаем списки url и text
-    if texts_list:
-        embeddings_list = create_embeddings(texts_list)  # Создаем эмбеддинги
-        print(f"Эмбеддинги успешно созданы. Всего: {len(embeddings_list)}")
-
+    main()
 
